@@ -8,6 +8,14 @@ AKA "how to set up virtual IP addresses in kubernetes using [IPVS - The Linux Vi
 [![Go Report Card](https://goreportcard.com/badge/github.com/aledbf/kube-keepalived-vip)](https://goreportcard.com/report/github.com/aledbf/kube-keepalived-vip)
 
 
+
+## build
+prepare directory DIR_A, and set GOPATH="DIR_A"
+make sub-direcotry DIR_A/github.com/aledbf
+then git clone under DIR_A/github.com/aledbf
+then cd kube-keepalived-vip and make
+
+
 ## Overview
 
 There are 2 ways to expose a service in the current kubernetes service model:
