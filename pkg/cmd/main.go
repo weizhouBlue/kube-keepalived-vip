@@ -54,7 +54,7 @@ var (
 
 	configMapName = flags.String("services-configmap", "",
 		`Name of the ConfigMap that contains the definition of the services to expose.
-		The key in the map indicates the external IP to use. The value is the name of the 
+		The key in the map indicates the external IP to use. The value is the name of the
 		service with the format namespace/serviceName and the port of the service could be a number or the
 		name of the port.`)
 
@@ -73,14 +73,16 @@ var (
 	}
 
 	vrid = flags.Int("vrid", 50,
-		`The keepalived VRID (Virtual Router Identifier, between 0 and 255 as per 
-      RFC-5798), which must be different for every Virtual Router (ie. every 
+		`The keepalived VRID (Virtual Router Identifier, between 0 and 255 as per
+      RFC-5798), which must be different for every Virtual Router (ie. every
       keepalived sets) running on the same network.`)
 
 	iface = flags.String("iface", "", `network interface to listen on. If undefined, the nodes
                  default interface will be used instead`)
 
 	httpPort = flags.Int("http-port", 8080, `The HTTP port to use for health checks`)
+
+	releaseVips = flags.Bool("release-vips", true, `add --release-vips to keepalived args`)
 )
 
 func main() {
@@ -123,11 +125,6 @@ func main() {
 		glog.Fatalf("unexpected error: %v", err)
 	}
 
-	err = resetIPVS()
-	if err != nil {
-		glog.Fatalf("unexpected error: %v", err)
-	}
-
 	if *proxyMode {
 		copyHaproxyCfg()
 	}
@@ -137,7 +134,15 @@ func main() {
 	}
 
 	glog.Info("starting LVS configuration")
-	ipvsc := controller.NewIPVSController(kubeClient, *watchNamespace, *useUnicast, *configMapName, *vrid, *proxyMode, *iface, *httpPort)
+	ipvsc := controller.NewIPVSController(kubeClient, *watchNamespace, *useUnicast, *configMapName, *vrid, *proxyMode, *iface, *httpPort, *releaseVips)
+
+	// If kube-proxy running in ipvs mode
+	// Reset of IPVS lead to connection loss with API server
+	// If connection established goclient will retry itself
+	err = resetIPVS()
+	if err != nil {
+		glog.Fatalf("unexpected error: %v", err)
+	}
 
 	ipvsc.Start()
 }

@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.35
+
+- Update keepalived to v2.0.16
+- [#97](https://github.com/aledbf/kube-keepalived-vip/issues/97) Don't remove VIPs on reload
+
+## 0.34
+
+- Only watch one configmap
+- [#81](https://github.com/aledbf/kube-keepalived-vip/issues/91) Reset IPVS after API client init 
+- [#92](https://github.com/aledbf/kube-keepalived-vip/pull/92) Add flag to make ipvs reset optional
+
+## 0.33
+
+- Update keepalived to v2.0.15
+- Remove check that avoids the render of the template and comparison of the md5
+- [#72](https://github.com/aledbf/kube-keepalived-vip/pull/72) nopreempt is set along with priority weights?
+- [#87](https://github.com/aledbf/kube-keepalived-vip/issues/87) keepalived-vip v0.30 cannot be aware of the backend pod scaling
+
 ## 0.32
 
 - Update keepalived to v2.0.11

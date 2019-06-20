@@ -40,6 +40,7 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/util/flowcontrol"
+	api "k8s.io/kubernetes/pkg/apis/core"
 
 	utildbus "k8s.io/kubernetes/pkg/util/dbus"
 	utiliptables "k8s.io/kubernetes/pkg/util/iptables"
@@ -124,7 +125,6 @@ type ipvsControllerController struct {
 	keepalived *keepalived
 
 	configMapName string
-	configMapResourceVersion string
 
 	httpPort int
 
@@ -258,17 +258,12 @@ func (ipvsc *ipvsControllerController) sync(key interface{}) error {
 		glog.Warningf("%v", err)
 		return err
 	}
+
 	cfgMap, err := ipvsc.getConfigMap(ns, name)
 	if err != nil {
 		return fmt.Errorf("unexpected error searching configmap %v: %v", ipvsc.configMapName, err)
 	}
 
-	if ipvsc.configMapResourceVersion == cfgMap.ObjectMeta.ResourceVersion {
-		glog.V(2).Infof("No change to %s ConfigMap", name)
-		return nil
-	}
-
-	ipvsc.configMapResourceVersion = cfgMap.ObjectMeta.ResourceVersion
 	svc := ipvsc.getServices(cfgMap)
 
 	err = ipvsc.keepalived.WriteCfg(svc)
@@ -358,7 +353,7 @@ func (ipvsc *ipvsControllerController) Stop() error {
 }
 
 // NewIPVSController creates a new controller from the given config.
-func NewIPVSController(kubeClient *kubernetes.Clientset, namespace string, useUnicast bool, configMapName string, vrid int, proxyMode bool, iface string, httpPort int) *ipvsControllerController {
+func NewIPVSController(kubeClient *kubernetes.Clientset, namespace string, useUnicast bool, configMapName string, vrid int, proxyMode bool, iface string, httpPort int, releaseVips bool) *ipvsControllerController {
 	ipvsc := ipvsControllerController{
 		client:            kubeClient,
 		reloadRateLimiter: flowcontrol.NewTokenBucketRateLimiter(0.5, 1),
@@ -397,17 +392,18 @@ func NewIPVSController(kubeClient *kubernetes.Clientset, namespace string, useUn
 	iptInterface := utiliptables.New(execer, dbus, utiliptables.ProtocolIpv4)
 
 	ipvsc.keepalived = &keepalived{
-		iface:      iface,
-		ip:         nodeInfo.ip,
-		netmask:    nodeInfo.netmask,
-		nodes:      clusterNodes,
-		neighbors:  neighbors,
-		priority:   getNodePriority(nodeInfo.ip, clusterNodes),
-		useUnicast: useUnicast,
-		ipt:        iptInterface,
-		vrid:       vrid,
-		proxyMode:  proxyMode,
+		iface:       iface,
+		ip:          nodeInfo.ip,
+		netmask:     nodeInfo.netmask,
+		nodes:       clusterNodes,
+		neighbors:   neighbors,
+		priority:    getNodePriority(nodeInfo.ip, clusterNodes),
+		useUnicast:  useUnicast,
+		ipt:         iptInterface,
+		vrid:        vrid,
+		proxyMode:   proxyMode,
 		notify:     notify,
+		releaseVips: releaseVips,
 	}
 
 	ipvsc.syncQueue = task.NewTaskQueue(ipvsc.sync)
@@ -452,8 +448,14 @@ func NewIPVSController(kubeClient *kubernetes.Clientset, namespace string, useUn
 		cache.NewListWatchFromClient(ipvsc.client.CoreV1().RESTClient(), "endpoints", namespace, fields.Everything()),
 		&apiv1.Endpoints{}, resyncPeriod, eventHandlers)
 
+	cmns, cmn, err := parseNsName(ipvsc.configMapName)
+	if err != nil {
+		glog.Fatalf("Error parsing configmap name: %v", err)
+	}
+
 	ipvsc.mapLister.Store, ipvsc.mapController = cache.NewInformer(
-		cache.NewListWatchFromClient(ipvsc.client.CoreV1().RESTClient(), "configmaps", namespace, fields.Everything()),
+		cache.NewListWatchFromClient(ipvsc.client.CoreV1().RESTClient(), "configmaps", cmns,
+			fields.OneTermEqualSelector(api.ObjectNameField, cmn)),
 		&apiv1.ConfigMap{}, resyncPeriod, mapEventHandler)
 
 	http.HandleFunc("/health", func(rw http.ResponseWriter, req *http.Request) {
